@@ -1,0 +1,183 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Smooth scrolling */
+* {
+  scroll-behavior: smooth;
+}
+
+/* Message animations */
+.message-fade-in {
+  opacity: 0;
+  animation: fadeIn 0.3s ease-in-out forwards;
+}
+
+@keyframes fadeIn {
+  to {
+    opacity: 1;
+  }
+}
+
+/* Loading animation */
+@keyframes bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
+}
+
+.animate-bounce {
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+
+/* Custom scrollbar */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(203 213 225) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgb(203 213 225);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(148 163 184);
+}
+
+/* Prose improvements for markdown */
+.prose {
+  color: rgb(55 65 81);
+  max-width: none;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 {
+  color: rgb(17 24 39);
+  font-weight: 600;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.prose p {
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+}
+
+.prose ul,
+.prose ol {
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+}
+
+.prose li {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.prose strong {
+  font-weight: 600;
+  color: rgb(17 24 39);
+}
+
+.prose em {
+  font-style: italic;
+}
+
+.prose code {
+  background-color: rgb(243 244 246);
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+
+.prose pre {
+  background-color: rgb(17 24 39);
+  color: rgb(243 244 246);
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+.prose pre code {
+  background-color: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+.prose blockquote {
+  border-left: 4px solid rgb(59 130 246);
+  padding-left: 1rem;
+  margin-left: 0;
+  color: rgb(75 85 99);
+  font-style: italic;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+.prose th,
+.prose td {
+  border: 1px solid rgb(209 213 219);
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.prose th {
+  background-color: rgb(249 250 251);
+  font-weight: 600;
+}
+
+/* Focus styles */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgb(59 130 246);
+  outline-offset: 2px;
+}
+
+/* Transitions */
+.transition-colors {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Chart container improvements */
+.chart-container {
+  position: relative;
+  height: 300px;
+  width: 100%;
+}
+
+/* Responsive design improvements */
+@media (max-width: 768px) {
+  .message-fade-in .max-w-4xl {
+    max-width: 100%;
+  }
+  
+  .chart-container {
+    height: 250px;
+  }
+} 
