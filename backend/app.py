@@ -179,8 +179,8 @@ async def simulate_analysis_with_progress(session_id: str, user_query: str, resp
             total_steps=total_steps
         )
         
-        # Fixed timing: 15 seconds / 6 steps = 2.5 seconds per step
-        await asyncio.sleep(2.5)
+        # New timing: 3 seconds total / 6 steps = 0.5 seconds per step
+        await asyncio.sleep(0.5)
     
     # Final completion log
     await progress_logger.log_progress(

@@ -7,6 +7,7 @@ function ProgressMessage({ sessionId, onComplete }) {
   const [currentStep, setCurrentStep] = useState('')
   const [isComplete, setIsComplete] = useState(false)
   const wsRef = useRef(null)
+  const pollingIntervalRef = useRef(null)
 
   useEffect(() => {
     if (!sessionId) return
@@ -14,7 +15,9 @@ function ProgressMessage({ sessionId, onComplete }) {
     // Connect to WebSocket for real-time progress updates
     const connectWebSocket = () => {
       try {
-        const wsUrl = `ws://localhost:8001/ws/progress/${sessionId}`
+        // Use current host for flexibility
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+        const wsUrl = `${protocol}://${window.location.hostname}:8001/ws/progress/${sessionId}`
         wsRef.current = new WebSocket(wsUrl)
 
         wsRef.current.onopen = () => {
@@ -60,10 +63,43 @@ function ProgressMessage({ sessionId, onComplete }) {
         wsRef.current.onerror = (error) => {
           console.error('WebSocket error:', error)
           setIsConnected(false)
+          // Fallback to polling
+          startPolling()
         }
       } catch (error) {
         console.error('Failed to create WebSocket:', error)
+        // Fallback to polling
+        startPolling()
       }
+    }
+
+    // Polling fallback for environments where WebSocket is blocked
+    const startPolling = () => {
+      if (pollingIntervalRef.current) return // already polling
+      pollingIntervalRef.current = setInterval(async () => {
+        try {
+          const response = await fetch(`/api/progress/${sessionId}`)
+          if (!response.ok) return
+          const data = await response.json()
+          if (Array.isArray(data.logs)) {
+            setLogs(data.logs)
+            if (data.logs.length) {
+              const lastLog = data.logs[data.logs.length - 1]
+              setCurrentStep(lastLog.step)
+              if (lastLog.step === 'Finished' || lastLog.step === 'Completed') {
+                clearInterval(pollingIntervalRef.current)
+                pollingIntervalRef.current = null
+                setIsComplete(true)
+                setTimeout(() => {
+                  onComplete && onComplete()
+                }, 1000)
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Polling error:', err)
+        }
+      }, 500)
     }
 
     connectWebSocket()
@@ -71,6 +107,10 @@ function ProgressMessage({ sessionId, onComplete }) {
     return () => {
       if (wsRef.current) {
         wsRef.current.close()
+      }
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
       }
     }
   }, [sessionId, onComplete])
