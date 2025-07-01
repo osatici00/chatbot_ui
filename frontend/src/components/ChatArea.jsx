@@ -112,14 +112,23 @@ function ChatArea({ sessionId, onSessionCreated }) {
 
   return (
     <div className="flex-1 flex flex-col h-full bg-white">
-      {/* Header */}
-      <div className="border-b border-gray-200 p-4">
-        <h1 className="text-xl font-semibold text-gray-900">
-          {sessionId ? 'Chat Session' : 'New Chat'}
-        </h1>
-        <p className="text-sm text-gray-500">
-          Ask questions about your data or request visualizations
-        </p>
+      {/* Chat Header */}
+      <div className="border-b border-gray-200 p-4 bg-gray-50">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-medium text-gray-900">
+              {sessionId ? 'Chat Session' : 'New Chat'}
+            </h2>
+            <p className="text-sm text-gray-500">
+              Ask questions about your data or request visualizations
+            </p>
+          </div>
+          {sessionId && (
+            <div className="text-xs text-gray-400">
+              Session ID: {sessionId.slice(0, 8)}...
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Messages */}

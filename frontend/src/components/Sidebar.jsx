@@ -13,9 +13,11 @@ function Sidebar({
   const [searchTerm, setSearchTerm] = useState('')
   const [filteredSessions, setFilteredSessions] = useState([])
 
-  // Load sessions on component mount
+  // Load sessions on component mount (only if sessions are empty)
   useEffect(() => {
-    loadSessions()
+    if (sessions.length === 0) {
+      loadSessions()
+    }
   }, [])
 
   // Filter sessions based on search term
