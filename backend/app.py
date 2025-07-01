@@ -156,33 +156,17 @@ sessions = {}
 uploaded_files = {}
 
 async def simulate_analysis_with_progress(session_id: str, user_query: str, response_type: str):
-    """Simulate analysis process with realistic progress steps"""
+    """Simulate analysis process with realistic progress steps - exactly 15 seconds with 6 steps"""
     
-    # Define progress steps based on response type
-    if response_type == "chart":
-        steps = [
-            ("Scanning databases", "Connecting to data sources and scanning available datasets..."),
-            ("Analyzing data", "Processing and analyzing data patterns..."),
-            ("Fetching relevant data", "Retrieving specific data points for visualization..."),
-            ("Generating visualization", "Creating interactive chart based on analysis..."),
-            ("Preparing response", "Finalizing response with insights and recommendations...")
-        ]
-    elif response_type == "file":
-        steps = [
-            ("Scanning databases", "Accessing database connections..."),
-            ("Fetching relevant data", "Querying databases for requested information..."),
-            ("Processing data", "Cleaning and formatting data for export..."),
-            ("Generating file", "Creating downloadable file with processed data..."),
-            ("Preparing download", "Finalizing file and preparing download link...")
-        ]
-    else:  # text analysis
-        steps = [
-            ("Scanning databases", "Connecting to data sources..."),
-            ("Analyzing patterns", "Identifying trends and patterns in the data..."),
-            ("Fetching insights", "Extracting key insights and metrics..."),
-            ("Generating analysis", "Compiling comprehensive analysis report..."),
-            ("Preparing response", "Formatting final response with recommendations...")
-        ]
+    # Fixed progress steps - same for all request types to match user requirements
+    steps = [
+        ("Scanning databases", "Connecting to data sources and scanning available datasets..."),
+        ("Analyzing", "Processing and analyzing data patterns..."),
+        ("Fetching relevant data", "Retrieving specific data points for your request..."),
+        ("Writing code", "Generating code and logic for your analysis..."),
+        ("Executing code", "Running analysis and processing results..."),
+        ("Preparing response", "Finalizing response with insights and recommendations...")
+    ]
     
     total_steps = len(steps)
     
@@ -195,8 +179,8 @@ async def simulate_analysis_with_progress(session_id: str, user_query: str, resp
             total_steps=total_steps
         )
         
-        # Simulate processing time (random between 1-3 seconds)
-        await asyncio.sleep(random.uniform(1.0, 3.0))
+        # Fixed timing: 15 seconds / 6 steps = 2.5 seconds per step
+        await asyncio.sleep(2.5)
     
     # Final completion log
     await progress_logger.log_progress(
@@ -524,7 +508,7 @@ async def process_query_with_progress(session_id: str, user_query: str, response
             step="Starting",
             message="Starting analysis of your request...",
             step_number=0,
-            total_steps=5
+            total_steps=6
         )
         
         # Simulate analysis with progress
@@ -566,17 +550,18 @@ async def process_query_with_progress(session_id: str, user_query: str, response
         sessions[session_id]["status"] = "completed"
         sessions[session_id]["last_activity"] = datetime.now().isoformat()
         
-        # Add notification for background completion
-        progress_logger.add_notification(
-            session_id=session_id,
-            message="Analysis completed!"
-        )
+        # Only add notification if no active WebSocket connection (user not watching)
+        if session_id not in progress_logger.active_connections:
+            progress_logger.add_notification(
+                session_id=session_id,
+                message="Analysis completed!"
+            )
         
         # Final completion log
         await progress_logger.log_progress(
             session_id=session_id,
             step="Finished",
-            message="Response ready! Check your chat for the complete analysis.",
+            message="Response ready! Your analysis is complete.",
             step_number=6,
             total_steps=6
         )

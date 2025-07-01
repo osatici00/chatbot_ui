@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import MessageList from './MessageList'
 import FileUpload from './FileUpload'
-import ProgressLogger from './ProgressLogger'
+import ProgressMessage from './ProgressMessage'
 import { Send, Paperclip } from 'lucide-react'
 import { sendQuery, getSession } from '../services/api'
 
@@ -10,8 +10,9 @@ function ChatArea({ sessionId, onSessionCreated }) {
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showFileUpload, setShowFileUpload] = useState(false)
-  const [showProgressLogger, setShowProgressLogger] = useState(false)
+  const [showProgressMessage, setShowProgressMessage] = useState(false)
   const [currentSessionId, setCurrentSessionId] = useState(sessionId)
+  const [processingSessionId, setProcessingSessionId] = useState(null)
 
   useEffect(() => {
     if (sessionId) {
@@ -21,7 +22,8 @@ function ChatArea({ sessionId, onSessionCreated }) {
       setMessages([])
       setCurrentSessionId(null)
     }
-    setShowProgressLogger(false) // Reset progress logger when switching sessions
+    setShowProgressMessage(false) // Reset progress message when switching sessions
+    setProcessingSessionId(null)
   }, [sessionId])
 
   const loadSession = async () => {
@@ -72,9 +74,20 @@ function ChatArea({ sessionId, onSessionCreated }) {
         onSessionCreated(newSession)
       }
 
-      // Show progress logger for processing requests
+      // Show progress message for processing requests
       if (response.status === 'processing') {
-        setShowProgressLogger(true)
+        setShowProgressMessage(true)
+        setProcessingSessionId(responseSessionId)
+        
+        // Add a temporary processing message to the chat
+        const processingMessage = {
+          type: 'assistant',
+          content: 'Processing your request...',
+          timestamp: new Date().toISOString(),
+          isProcessing: true,
+          sessionId: responseSessionId
+        }
+        setMessages(prev => [...prev, processingMessage])
       } else {
         // Add assistant response for immediate responses
         const assistantMessage = {
@@ -127,13 +140,21 @@ function ChatArea({ sessionId, onSessionCreated }) {
   }
 
   const handleProgressComplete = async () => {
-    // Hide progress logger
-    setShowProgressLogger(false)
+    // Hide progress message
+    setShowProgressMessage(false)
     
-    // Reload session to get the final response
-    if (currentSessionId) {
+    // Remove the processing message and reload session to get the final response
+    if (processingSessionId) {
       try {
-        await loadSession()
+        // Remove processing message first
+        setMessages(prev => prev.filter(msg => !msg.isProcessing))
+        
+        // Only reload if we're still in the same session
+        if (processingSessionId === currentSessionId) {
+          await loadSession()
+        }
+        
+        setProcessingSessionId(null)
       } catch (error) {
         console.error('Failed to reload session after completion:', error)
       }
@@ -169,12 +190,15 @@ function ChatArea({ sessionId, onSessionCreated }) {
           onExampleClick={handleExampleClick}
         />
         
-        {/* Progress Logger */}
-        <ProgressLogger
-          sessionId={currentSessionId}
-          isVisible={showProgressLogger}
-          onComplete={handleProgressComplete}
-        />
+        {/* Progress Message - shown in chat area */}
+        {showProgressMessage && processingSessionId && (
+          <div className="px-4 pb-2">
+            <ProgressMessage
+              sessionId={processingSessionId}
+              onComplete={handleProgressComplete}
+            />
+          </div>
+        )}
       </div>
 
       {/* File Upload Modal */}
