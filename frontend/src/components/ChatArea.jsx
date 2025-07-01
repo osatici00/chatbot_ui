@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import MessageList from './MessageList'
 import FileUpload from './FileUpload'
+import ProgressLogger from './ProgressLogger'
 import { Send, Paperclip } from 'lucide-react'
 import { sendQuery, getSession } from '../services/api'
 
@@ -9,13 +10,18 @@ function ChatArea({ sessionId, onSessionCreated }) {
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showFileUpload, setShowFileUpload] = useState(false)
+  const [showProgressLogger, setShowProgressLogger] = useState(false)
+  const [currentSessionId, setCurrentSessionId] = useState(sessionId)
 
   useEffect(() => {
     if (sessionId) {
       loadSession()
+      setCurrentSessionId(sessionId)
     } else {
       setMessages([])
+      setCurrentSessionId(null)
     }
+    setShowProgressLogger(false) // Reset progress logger when switching sessions
   }, [sessionId])
 
   const loadSession = async () => {
@@ -48,29 +54,39 @@ function ChatArea({ sessionId, onSessionCreated }) {
         sessionId
       )
 
+      // Update current session ID for new sessions
+      const responseSessionId = response.session_id || sessionId
+      if (!sessionId && responseSessionId) {
+        setCurrentSessionId(responseSessionId)
+      }
+
       // Create session info for parent component if this is a new session
-      if (!sessionId && response.session_id) {
+      if (!sessionId && responseSessionId) {
         const newSession = {
-          session_id: response.session_id,
+          session_id: responseSessionId,
           title: userMessage.content.slice(0, 50) + (userMessage.content.length > 50 ? '...' : ''),
           created_at: new Date().toISOString(),
           last_activity: new Date().toISOString(),
-          status: 'active'
+          status: 'processing'
         }
         onSessionCreated(newSession)
       }
 
-      // Add assistant response
-      const assistantMessage = {
-        type: 'assistant',
-        content: response.response_content || 'Processing your request...',
-        timestamp: new Date().toISOString(),
-        chart_data: response.chart_data,
-        file_info: response.file_info,
-        progress: response.progress
+      // Show progress logger for processing requests
+      if (response.status === 'processing') {
+        setShowProgressLogger(true)
+      } else {
+        // Add assistant response for immediate responses
+        const assistantMessage = {
+          type: 'assistant',
+          content: response.response_content || 'Processing your request...',
+          timestamp: new Date().toISOString(),
+          chart_data: response.chart_data,
+          file_info: response.file_info,
+          progress: response.progress
+        }
+        setMessages(prev => [...prev, assistantMessage])
       }
-
-      setMessages(prev => [...prev, assistantMessage])
 
     } catch (error) {
       console.error('Failed to send message:', error)
@@ -110,6 +126,20 @@ function ChatArea({ sessionId, onSessionCreated }) {
     setShowFileUpload(false)
   }
 
+  const handleProgressComplete = async () => {
+    // Hide progress logger
+    setShowProgressLogger(false)
+    
+    // Reload session to get the final response
+    if (currentSessionId) {
+      try {
+        await loadSession()
+      } catch (error) {
+        console.error('Failed to reload session after completion:', error)
+      }
+    }
+  }
+
   return (
     <div className="flex-1 flex flex-col h-full bg-white">
       {/* Chat Header */}
@@ -137,6 +167,13 @@ function ChatArea({ sessionId, onSessionCreated }) {
           messages={messages} 
           isLoading={isLoading} 
           onExampleClick={handleExampleClick}
+        />
+        
+        {/* Progress Logger */}
+        <ProgressLogger
+          sessionId={currentSessionId}
+          isVisible={showProgressLogger}
+          onComplete={handleProgressComplete}
         />
       </div>
 

@@ -95,4 +95,24 @@ export const uploadFile = async (file) => {
   }
 }
 
+export const getProgress = async (sessionId) => {
+  try {
+    const response = await api.get(`/progress/${sessionId}`)
+    return response.data
+  } catch (error) {
+    console.error('Failed to get progress:', error)
+    throw error
+  }
+}
+
+export const markNotificationRead = async (sessionId) => {
+  try {
+    const response = await api.post(`/sessions/${sessionId}/mark-read`)
+    return response.data
+  } catch (error) {
+    console.error('Failed to mark notification as read:', error)
+    throw error
+  }
+}
+
 export default api 

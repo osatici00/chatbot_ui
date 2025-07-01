@@ -5,13 +5,16 @@ All data is completely generic and suitable for public demonstrations
 """
 
 import os
-import uuid
 import json
+import asyncio
+import threading
+import time
+import uuid
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 import random
 from faker import Faker
@@ -28,6 +31,101 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Progress logging system
+class ProgressLogger:
+    def __init__(self):
+        self.logs_dir = "logs"
+        self.active_connections: Dict[str, WebSocket] = {}
+        self.session_progress: Dict[str, List[Dict]] = {}
+        self.session_notifications: Dict[str, Dict] = {}
+        os.makedirs(self.logs_dir, exist_ok=True)
+    
+    def get_log_file_path(self, session_id: str) -> str:
+        return os.path.join(self.logs_dir, f"{session_id}_progress.json")
+    
+    async def log_progress(self, session_id: str, step: str, message: str, step_number: int = None, total_steps: int = None):
+        """Log progress step and notify connected clients"""
+        timestamp = datetime.now().isoformat()
+        
+        log_entry = {
+            "timestamp": timestamp,
+            "step": step,
+            "message": message,
+            "step_number": step_number,
+            "total_steps": total_steps,
+            "session_id": session_id
+        }
+        
+        # Store in memory for active sessions
+        if session_id not in self.session_progress:
+            self.session_progress[session_id] = []
+        self.session_progress[session_id].append(log_entry)
+        
+        # Write to file
+        log_file = self.get_log_file_path(session_id)
+        try:
+            # Read existing logs
+            existing_logs = []
+            if os.path.exists(log_file):
+                with open(log_file, 'r') as f:
+                    existing_logs = json.load(f)
+            
+            # Append new log
+            existing_logs.append(log_entry)
+            
+            # Write back
+            with open(log_file, 'w') as f:
+                json.dump(existing_logs, f, indent=2)
+        except Exception as e:
+            print(f"Error writing log file: {e}")
+        
+        # Send to connected WebSocket clients
+        if session_id in self.active_connections:
+            try:
+                await self.active_connections[session_id].send_text(json.dumps(log_entry))
+            except Exception as e:
+                print(f"Error sending WebSocket message: {e}")
+                # Remove failed connection
+                if session_id in self.active_connections:
+                    del self.active_connections[session_id]
+    
+    def add_notification(self, session_id: str, message: str):
+        """Add notification for completed responses in background"""
+        self.session_notifications[session_id] = {
+            "message": message,
+            "timestamp": datetime.now().isoformat(),
+            "read": False
+        }
+    
+    def get_notifications(self, session_id: str) -> Dict:
+        """Get notifications for a session"""
+        return self.session_notifications.get(session_id, {})
+    
+    def mark_notification_read(self, session_id: str):
+        """Mark notification as read"""
+        if session_id in self.session_notifications:
+            self.session_notifications[session_id]["read"] = True
+    
+    def get_progress_logs(self, session_id: str) -> List[Dict]:
+        """Get all progress logs for a session"""
+        # Try memory first
+        if session_id in self.session_progress:
+            return self.session_progress[session_id]
+        
+        # Fall back to file
+        log_file = self.get_log_file_path(session_id)
+        if os.path.exists(log_file):
+            try:
+                with open(log_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"Error reading log file: {e}")
+        
+        return []
+
+# Global progress logger instance
+progress_logger = ProgressLogger()
 
 # Pydantic models
 class QueryRequest(BaseModel):
@@ -51,15 +149,73 @@ class SessionInfo(BaseModel):
     created_at: str
     last_activity: str
     status: str
+    has_notification: bool = False
 
 # In-memory storage
 sessions = {}
 uploaded_files = {}
 
-def generate_chart_data():
+async def simulate_analysis_with_progress(session_id: str, user_query: str, response_type: str):
+    """Simulate analysis process with realistic progress steps"""
+    
+    # Define progress steps based on response type
+    if response_type == "chart":
+        steps = [
+            ("Scanning databases", "Connecting to data sources and scanning available datasets..."),
+            ("Analyzing data", "Processing and analyzing data patterns..."),
+            ("Fetching relevant data", "Retrieving specific data points for visualization..."),
+            ("Generating visualization", "Creating interactive chart based on analysis..."),
+            ("Preparing response", "Finalizing response with insights and recommendations...")
+        ]
+    elif response_type == "file":
+        steps = [
+            ("Scanning databases", "Accessing database connections..."),
+            ("Fetching relevant data", "Querying databases for requested information..."),
+            ("Processing data", "Cleaning and formatting data for export..."),
+            ("Generating file", "Creating downloadable file with processed data..."),
+            ("Preparing download", "Finalizing file and preparing download link...")
+        ]
+    else:  # text analysis
+        steps = [
+            ("Scanning databases", "Connecting to data sources..."),
+            ("Analyzing patterns", "Identifying trends and patterns in the data..."),
+            ("Fetching insights", "Extracting key insights and metrics..."),
+            ("Generating analysis", "Compiling comprehensive analysis report..."),
+            ("Preparing response", "Formatting final response with recommendations...")
+        ]
+    
+    total_steps = len(steps)
+    
+    for i, (step_name, step_message) in enumerate(steps, 1):
+        await progress_logger.log_progress(
+            session_id=session_id,
+            step=step_name,
+            message=step_message,
+            step_number=i,
+            total_steps=total_steps
+        )
+        
+        # Simulate processing time (random between 1-3 seconds)
+        await asyncio.sleep(random.uniform(1.0, 3.0))
+    
+    # Final completion log
+    await progress_logger.log_progress(
+        session_id=session_id,
+        step="Completed",
+        message="Analysis completed successfully!",
+        step_number=total_steps,
+        total_steps=total_steps
+    )
+
+def generate_chart_data(requested_type: str = None):
     """Generate interactive chart data for different visualization types"""
     chart_types = ["bar", "line", "pie", "scatter"]
-    chart_type = random.choice(chart_types)
+    
+    # Use requested type if provided, otherwise random
+    if requested_type and requested_type in chart_types:
+        chart_type = requested_type
+    else:
+        chart_type = random.choice(chart_types)
     
     if chart_type == "bar":
         return {
@@ -264,6 +420,21 @@ def create_session_title(user_query: str) -> str:
         return user_query
     return user_query[:47] + "..."
 
+def determine_chart_type(user_query: str) -> str:
+    """Determine specific chart type from user query"""
+    query_lower = user_query.lower()
+    
+    if any(keyword in query_lower for keyword in ["bar chart", "bar graph", "column chart", "histogram"]):
+        return "bar"
+    elif any(keyword in query_lower for keyword in ["line chart", "line graph", "trend", "time series"]):
+        return "line"
+    elif any(keyword in query_lower for keyword in ["pie chart", "pie graph", "donut", "distribution"]):
+        return "pie"
+    elif any(keyword in query_lower for keyword in ["scatter plot", "scatter chart", "correlation", "scatter"]):
+        return "scatter"
+    else:
+        return None  # No specific type requested
+
 def determine_response_type(user_query: str) -> str:
     """Determine response type based on query content"""
     query_lower = user_query.lower()
@@ -304,8 +475,8 @@ def root():
     return {"message": "ChatGPT UI Demo API is running", "timestamp": datetime.now().isoformat()}
 
 @app.post("/api/query", response_model=QueryResponse)
-def query_endpoint(request: QueryRequest):
-    """Main query endpoint - simulates realistic AI analysis"""
+async def query_endpoint(request: QueryRequest):
+    """Main query endpoint - simulates realistic AI analysis with progress logging"""
     
     # Generate session ID
     session_id = request.session_id or str(uuid.uuid4())
@@ -317,12 +488,13 @@ def query_endpoint(request: QueryRequest):
             "title": create_session_title(request.user_query),
             "created_at": datetime.now().isoformat(),
             "last_activity": datetime.now().isoformat(),
-            "status": "active",
+            "status": "processing",
             "messages": []
         }
     
     # Update session
     sessions[session_id]["last_activity"] = datetime.now().isoformat()
+    sessions[session_id]["status"] = "processing"
     sessions[session_id]["messages"].append({
         "type": "user",
         "content": request.user_query,
@@ -332,95 +504,168 @@ def query_endpoint(request: QueryRequest):
     # Determine response type based on query
     response_type = determine_response_type(request.user_query)
     
-    if response_type == "chart":
-        chart_data = generate_chart_data()
-        response_content = generate_mock_text_response()
-        
-        sessions[session_id]["messages"].append({
-            "type": "assistant", 
-            "content": response_content,
-            "chart_data": chart_data,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        return QueryResponse(
-            session_id=session_id,
-            status="completed",
-            message="Analysis with interactive chart generated successfully",
-            response_content=response_content,
-            response_type="chart",
-            chart_data=chart_data
-        )
+    # Start background processing with progress logging
+    asyncio.create_task(process_query_with_progress(session_id, request.user_query, response_type))
     
-    elif response_type == "file":
-        file_info = generate_mock_file_response()
-        response_content = f"Your {file_info['file_type'].upper()} report has been generated and is ready for download."
-        
-        sessions[session_id]["messages"].append({
-            "type": "assistant",
-            "content": response_content,
-            "file_info": file_info,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        return QueryResponse(
+    # Return immediate response indicating processing has started
+    return QueryResponse(
+        session_id=session_id,
+        status="processing",
+        message="Your request is being processed. Progress updates will be shown in real-time.",
+        response_type=response_type
+    )
+
+async def process_query_with_progress(session_id: str, user_query: str, response_type: str):
+    """Process query in background with progress updates"""
+    try:
+        # Start progress logging
+        await progress_logger.log_progress(
             session_id=session_id,
-            status="completed", 
-            message="File generated successfully",
-            response_content=response_content,
-            response_type="file",
-            file_info=file_info
+            step="Starting",
+            message="Starting analysis of your request...",
+            step_number=0,
+            total_steps=5
         )
+        
+        # Simulate analysis with progress
+        await simulate_analysis_with_progress(session_id, user_query, response_type)
+        
+        # Generate final response based on type
+        if response_type == "chart":
+            requested_chart_type = determine_chart_type(user_query)
+            chart_data = generate_chart_data(requested_chart_type)
+            response_content = generate_mock_text_response()
+            
+            sessions[session_id]["messages"].append({
+                "type": "assistant", 
+                "content": response_content,
+                "chart_data": chart_data,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+        elif response_type == "file":
+            file_info = generate_mock_file_response()
+            response_content = f"Your {file_info['file_type'].upper()} report has been generated and is ready for download."
+            
+            sessions[session_id]["messages"].append({
+                "type": "assistant",
+                "content": response_content,
+                "file_info": file_info,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+        else:  # text response
+            response_content = generate_mock_text_response()
+            sessions[session_id]["messages"].append({
+                "type": "assistant", 
+                "content": response_content,
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        # Update session status
+        sessions[session_id]["status"] = "completed"
+        sessions[session_id]["last_activity"] = datetime.now().isoformat()
+        
+        # Add notification for background completion
+        progress_logger.add_notification(
+            session_id=session_id,
+            message="Analysis completed!"
+        )
+        
+        # Final completion log
+        await progress_logger.log_progress(
+            session_id=session_id,
+            step="Finished",
+            message="Response ready! Check your chat for the complete analysis.",
+            step_number=6,
+            total_steps=6
+        )
+        
+    except Exception as e:
+        print(f"Error processing query: {e}")
+        sessions[session_id]["status"] = "error"
+        await progress_logger.log_progress(
+            session_id=session_id,
+            step="Error",
+            message=f"An error occurred: {str(e)}",
+            step_number=0,
+            total_steps=0
+        )
+
+@app.websocket("/ws/progress/{session_id}")
+async def websocket_progress(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for real-time progress updates"""
+    await websocket.accept()
+    progress_logger.active_connections[session_id] = websocket
     
-    elif response_type == "progress":
-        return QueryResponse(
-            session_id=session_id,
-            status="processing",
-            message="Analyzing data from multiple sources...",
-            response_type="progress",
-            progress={
-                "current_step": "Data fetching",
-                "total_steps": 5,
-                "percentage": random.randint(10, 90)
-            }
-        )
-    
-    else:  # text response
-        response_content = generate_mock_text_response()
-        sessions[session_id]["messages"].append({
-            "type": "assistant", 
-            "content": response_content,
-            "timestamp": datetime.now().isoformat()
-        })
+    try:
+        # Send existing progress logs when client connects
+        existing_logs = progress_logger.get_progress_logs(session_id)
+        for log in existing_logs:
+            await websocket.send_text(json.dumps(log))
         
-        return QueryResponse(
-            session_id=session_id,
-            status="completed",
-            message="Analysis completed successfully",
-            response_content=response_content,
-            response_type="text"
-        )
+        # Keep connection alive
+        while True:
+            try:
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                print(f"WebSocket error: {e}")
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if session_id in progress_logger.active_connections:
+            del progress_logger.active_connections[session_id]
+
+@app.get("/api/progress/{session_id}")
+async def get_progress(session_id: str):
+    """Get progress logs for a session"""
+    logs = progress_logger.get_progress_logs(session_id)
+    return {"session_id": session_id, "logs": logs}
 
 @app.get("/api/sessions", response_model=List[SessionInfo])
 def get_sessions():
-    """Get all user sessions"""
-    return [
-        SessionInfo(
+    """Get all user sessions with notification status"""
+    session_list = []
+    for session in sessions.values():
+        # Check if session has unread notifications
+        notification = progress_logger.get_notifications(session["session_id"])
+        has_notification = notification and not notification.get("read", True)
+        
+        session_list.append(SessionInfo(
             session_id=session["session_id"],
             title=session["title"],
             created_at=session["created_at"],
             last_activity=session["last_activity"],
-            status=session["status"]
-        )
-        for session in sessions.values()
-    ]
+            status=session["status"],
+            has_notification=has_notification
+        ))
+    
+    return session_list
 
 @app.get("/api/sessions/{session_id}")
 def get_session(session_id: str):
-    """Get specific session details"""
+    """Get specific session details and mark notifications as read"""
     if session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
-    return sessions[session_id]
+    
+    # Mark notifications as read when session is accessed
+    progress_logger.mark_notification_read(session_id)
+    
+    session_data = sessions[session_id].copy()
+    session_data["notification"] = progress_logger.get_notifications(session_id)
+    return session_data
+
+@app.post("/api/sessions/{session_id}/mark-read")
+def mark_notification_read(session_id: str):
+    """Mark session notifications as read"""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    progress_logger.mark_notification_read(session_id)
+    return {"message": "Notification marked as read"}
 
 @app.delete("/api/sessions/{session_id}")
 def delete_session(session_id: str):

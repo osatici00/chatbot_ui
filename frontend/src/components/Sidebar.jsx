@@ -121,10 +121,21 @@ function Sidebar({
                     <h3 className="font-medium text-sm text-gray-900 truncate">
                       {session.title}
                     </h3>
+                    {session.has_notification && (
+                      <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 animate-pulse" 
+                           title="New response available" />
+                    )}
                   </div>
-                  <p className="text-xs text-gray-500">
-                    {formatDate(session.last_activity)}
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-500">
+                      {formatDate(session.last_activity)}
+                    </p>
+                    {session.status === 'processing' && (
+                      <span className="text-xs text-blue-500 font-medium">
+                        Processing...
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <button
                   onClick={(e) => {

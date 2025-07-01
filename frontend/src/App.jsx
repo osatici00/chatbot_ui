@@ -1,19 +1,39 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Header from './components/Header'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
-import { getSessions } from './services/api'
+import { getSessions, markNotificationRead } from './services/api'
 import './styles/index.css'
 
 function App() {
   const [selectedSessionId, setSelectedSessionId] = useState(null)
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
+  const refreshIntervalRef = useRef(null)
 
   // Load sessions on app start
   useEffect(() => {
     loadInitialSessions()
+    startSessionRefresh()
+    
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current)
+      }
+    }
   }, [])
+
+  // Start periodic session refresh for notifications
+  const startSessionRefresh = () => {
+    refreshIntervalRef.current = setInterval(async () => {
+      try {
+        const data = await getSessions()
+        setSessions(data)
+      } catch (error) {
+        console.error('Failed to refresh sessions:', error)
+      }
+    }, 5000) // Refresh every 5 seconds
+  }
 
   const loadInitialSessions = async () => {
     try {
@@ -31,8 +51,21 @@ function App() {
     }
   }
 
-  const handleSessionSelect = (sessionId) => {
+  const handleSessionSelect = async (sessionId) => {
     setSelectedSessionId(sessionId)
+    
+    // Mark notifications as read when session is selected
+    try {
+      await markNotificationRead(sessionId)
+      // Update the session in the local state
+      setSessions(prev => prev.map(session => 
+        session.session_id === sessionId 
+          ? { ...session, has_notification: false }
+          : session
+      ))
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error)
+    }
   }
 
   const handleSessionCreated = (newSession) => {
